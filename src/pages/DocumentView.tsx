@@ -50,10 +50,12 @@ import {
   GripVertical,
   Sparkles,
   Check,
+  Download,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import debounce from '@/lib/debounce';
+import jsPDF from 'jspdf';
 
 interface Section {
   id: string;
@@ -221,14 +223,27 @@ export default function DocumentView() {
   const handleContentChange = (content: string) => {
     if (!activeSection) return;
 
-    // Update local state immediately
-    setActiveSection({ ...activeSection, content });
-    setSections(sections.map((s) => 
-      s.id === activeSection.id ? { ...s, content } : s
-    ));
+    const sectionId = activeSection.id;
 
-    // Debounced save to database
-    debouncedSave(activeSection.id, content);
+    // Update sections array with new content for this specific section
+    setSections(prevSections => 
+      prevSections.map((s) => 
+        s.id === sectionId ? { ...s, content } : s
+      )
+    );
+
+    // Update active section
+    setActiveSection(prev => prev ? { ...prev, content } : null);
+
+    // Debounced save to database with the specific section ID
+    debouncedSave(sectionId, content);
+  };
+
+  // When switching sections, get the fresh content from the sections array
+  const handleSectionClick = (section: Section) => {
+    // Find the latest version of this section from state
+    const latestSection = sections.find(s => s.id === section.id);
+    setActiveSection(latestSection || section);
   };
 
   const handleProjectTitleSave = async () => {
@@ -343,6 +358,84 @@ export default function DocumentView() {
     toast.success('AI content inserted');
   };
 
+  // PDF Export function
+  const handleExportPDF = () => {
+    if (!project) return;
+
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 20;
+    const maxWidth = pageWidth - margin * 2;
+    let yPosition = 20;
+
+    // Helper to add text with word wrap and page breaks
+    const addText = (text: string, fontSize: number, isBold = false) => {
+      doc.setFontSize(fontSize);
+      doc.setFont('helvetica', isBold ? 'bold' : 'normal');
+      
+      // Convert HTML to plain text
+      const plainText = text
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/\s+/g, ' ')
+        .trim();
+      
+      const lines = doc.splitTextToSize(plainText, maxWidth);
+      
+      lines.forEach((line: string) => {
+        if (yPosition > 270) {
+          doc.addPage();
+          yPosition = 20;
+        }
+        doc.text(line, margin, yPosition);
+        yPosition += fontSize * 0.5;
+      });
+      
+      yPosition += 5;
+    };
+
+    // Title
+    addText(project.title, 24, true);
+    yPosition += 5;
+
+    // Metadata
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100);
+    doc.text(`Industry: ${project.industry}`, margin, yPosition);
+    yPosition += 6;
+    doc.text(`Generated: ${new Date().toLocaleDateString()}`, margin, yPosition);
+    yPosition += 15;
+    doc.setTextColor(0);
+
+    // Add each section
+    sections.forEach((section) => {
+      // Check if we need a new page for section title
+      if (yPosition > 250) {
+        doc.addPage();
+        yPosition = 20;
+      }
+
+      // Section title
+      addText(section.title, 16, true);
+      yPosition += 3;
+
+      // Section content
+      if (section.content) {
+        addText(section.content, 11);
+      }
+      yPosition += 10;
+    });
+
+    // Save the PDF
+    const filename = `${project.title.replace(/[^a-z0-9]/gi, '-')}-Research-Document.pdf`;
+    doc.save(filename);
+    toast.success('PDF exported successfully');
+  };
+
   if (authLoading || loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -395,7 +488,7 @@ export default function DocumentView() {
             </button>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           {saving && (
             <span className="flex items-center gap-1 text-xs text-muted-foreground animate-pulse-soft">
               <Loader2 className="h-3 w-3 animate-spin" />
@@ -408,6 +501,10 @@ export default function DocumentView() {
               Saved
             </span>
           )}
+          <Button variant="outline" size="sm" onClick={handleExportPDF}>
+            <Download className="mr-2 h-4 w-4" />
+            Export PDF
+          </Button>
         </div>
       </header>
 
@@ -435,7 +532,7 @@ export default function DocumentView() {
                     key={section.id}
                     section={section}
                     isActive={activeSection?.id === section.id}
-                    onClick={() => setActiveSection(section)}
+                    onClick={() => handleSectionClick(section)}
                     onDelete={() => setDeleteSection(section)}
                     canDelete={section.title !== 'Problem Statement'}
                   />
@@ -464,6 +561,7 @@ export default function DocumentView() {
               </div>
               <div className="flex-1 overflow-y-auto p-4">
                 <RichTextEditor
+                  key={activeSection.id}
                   content={activeSection.content}
                   onChange={handleContentChange}
                 />
