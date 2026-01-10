@@ -358,7 +358,7 @@ export default function DocumentView() {
     toast.success('AI content inserted');
   };
 
-  // PDF Export function
+  // PDF Export function with proper HTML parsing
   const handleExportPDF = () => {
     if (!project) return;
 
@@ -367,67 +367,156 @@ export default function DocumentView() {
     const margin = 20;
     const maxWidth = pageWidth - margin * 2;
     let yPosition = 20;
+    const lineHeight = 6;
 
-    // Helper to add text with word wrap and page breaks
-    const addText = (text: string, fontSize: number, isBold = false) => {
-      doc.setFontSize(fontSize);
-      doc.setFont('helvetica', isBold ? 'bold' : 'normal');
-      
-      // Convert HTML to plain text
-      const plainText = text
-        .replace(/<[^>]*>/g, ' ')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/\s+/g, ' ')
-        .trim();
-      
-      const lines = doc.splitTextToSize(plainText, maxWidth);
-      
-      lines.forEach((line: string) => {
-        if (yPosition > 270) {
-          doc.addPage();
-          yPosition = 20;
-        }
-        doc.text(line, margin, yPosition);
-        yPosition += fontSize * 0.5;
-      });
-      
-      yPosition += 5;
-    };
-
-    // Title
-    addText(project.title, 24, true);
-    yPosition += 5;
-
-    // Metadata
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(100);
-    doc.text(`Industry: ${project.industry}`, margin, yPosition);
-    yPosition += 6;
-    doc.text(`Generated: ${new Date().toLocaleDateString()}`, margin, yPosition);
-    yPosition += 15;
-    doc.setTextColor(0);
-
-    // Add each section
-    sections.forEach((section) => {
-      // Check if we need a new page for section title
-      if (yPosition > 250) {
+    // Helper to check page break
+    const checkPageBreak = (neededSpace: number) => {
+      if (yPosition + neededSpace > 275) {
         doc.addPage();
         yPosition = 20;
       }
+    };
 
-      // Section title
-      addText(section.title, 16, true);
-      yPosition += 3;
+    // Helper to add text with word wrap
+    const addWrappedText = (text: string, fontSize: number, isBold = false, indent = 0) => {
+      doc.setFontSize(fontSize);
+      doc.setFont('helvetica', isBold ? 'bold' : 'normal');
+      
+      const cleanText = text.trim();
+      if (!cleanText) return;
+      
+      const lines = doc.splitTextToSize(cleanText, maxWidth - indent);
+      
+      lines.forEach((line: string) => {
+        checkPageBreak(lineHeight);
+        doc.text(line, margin + indent, yPosition);
+        yPosition += lineHeight;
+      });
+    };
+
+    // Helper to parse and render HTML content
+    const renderHTMLContent = (htmlContent: string) => {
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = htmlContent;
+      
+      const processNode = (node: Node) => {
+        if (node.nodeType === Node.TEXT_NODE) {
+          const text = node.textContent?.trim();
+          if (text) {
+            addWrappedText(text, 11);
+          }
+          return;
+        }
+        
+        if (node.nodeType !== Node.ELEMENT_NODE) return;
+        
+        const element = node as Element;
+        const tagName = element.tagName.toLowerCase();
+        
+        switch (tagName) {
+          case 'h3':
+            yPosition += 3;
+            checkPageBreak(lineHeight + 5);
+            addWrappedText(element.textContent || '', 13, true);
+            yPosition += 2;
+            break;
+            
+          case 'p':
+            checkPageBreak(lineHeight);
+            // Process children to handle inline elements like <strong>
+            const pText = element.textContent || '';
+            addWrappedText(pText, 11);
+            yPosition += 2;
+            break;
+            
+          case 'ul':
+          case 'ol':
+            yPosition += 2;
+            const listItems = element.querySelectorAll(':scope > li');
+            listItems.forEach((li, index) => {
+              checkPageBreak(lineHeight);
+              const bullet = tagName === 'ul' ? '•' : `${index + 1}.`;
+              const liText = li.textContent || '';
+              doc.setFontSize(11);
+              doc.setFont('helvetica', 'normal');
+              doc.text(bullet, margin + 5, yPosition);
+              
+              const lines = doc.splitTextToSize(liText.trim(), maxWidth - 15);
+              lines.forEach((line: string, lineIndex: number) => {
+                if (lineIndex > 0) {
+                  checkPageBreak(lineHeight);
+                }
+                doc.text(line, margin + 12, yPosition);
+                yPosition += lineHeight;
+              });
+            });
+            yPosition += 2;
+            break;
+            
+          case 'strong':
+          case 'b':
+            // Handled inline within parent
+            break;
+            
+          default:
+            // Process children for unknown elements
+            element.childNodes.forEach(child => processNode(child));
+        }
+      };
+      
+      tempDiv.childNodes.forEach(node => processNode(node));
+    };
+
+    // Title
+    doc.setFontSize(22);
+    doc.setFont('helvetica', 'bold');
+    const titleLines = doc.splitTextToSize(project.title, maxWidth);
+    titleLines.forEach((line: string) => {
+      doc.text(line, margin, yPosition);
+      yPosition += 10;
+    });
+    yPosition += 5;
+
+    // Metadata
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(100, 100, 100);
+    doc.text(`Industry: ${project.industry}`, margin, yPosition);
+    yPosition += 5;
+    doc.text(`Generated: ${new Date().toLocaleDateString()}`, margin, yPosition);
+    yPosition += 12;
+    doc.setTextColor(0, 0, 0);
+
+    // Divider line
+    doc.setDrawColor(200, 200, 200);
+    doc.line(margin, yPosition, pageWidth - margin, yPosition);
+    yPosition += 10;
+
+    // Add each section
+    sections.forEach((section, index) => {
+      // Check if we need a new page for section title
+      checkPageBreak(25);
+
+      // Section title (H2 level)
+      doc.setFontSize(15);
+      doc.setFont('helvetica', 'bold');
+      doc.text(section.title, margin, yPosition);
+      yPosition += 8;
 
       // Section content
       if (section.content) {
-        addText(section.content, 11);
+        renderHTMLContent(section.content);
       }
-      yPosition += 10;
+      
+      yPosition += 8;
+      
+      // Add subtle divider between sections (except last)
+      if (index < sections.length - 1) {
+        checkPageBreak(15);
+        doc.setDrawColor(230, 230, 230);
+        doc.line(margin, yPosition, margin + 50, yPosition);
+        yPosition += 8;
+      }
     });
 
     // Save the PDF

@@ -125,16 +125,23 @@ serve(async (req) => {
       return `${index + 1}. "${title}" - ${desc}`;
     }).join('\n');
 
-    const prompt = `You are a UX research expert helping create a comprehensive research document. Generate UNIQUE and SPECIFIC starter content for EACH section listed below.
+    const prompt = `You are a UX research expert helping create a comprehensive research document. Generate UNIQUE and SPECIFIC starter content for EACH section listed below in HTML format.
 
 CRITICAL REQUIREMENTS:
 - Each section MUST have COMPLETELY DIFFERENT content
 - Content must be specific to that section's purpose
 - Each section should be 5-10 lines (50-100 words)
 - Include 1-2 concrete examples relevant to the problem statement AND the specific section
-- Use bullet points or short paragraphs for readability
 - Reference the problem statement naturally throughout
 - Make content actionable and helpful as a starting point
+
+HTML FORMATTING RULES (VERY IMPORTANT):
+- Use <h3> for sub-headings within sections
+- Use <p> for paragraphs
+- Use <strong> for bold/emphasized text
+- Use <ul><li> for bullet points
+- Do NOT use markdown syntax like ** or ##
+- Properly escape quotes in JSON
 
 PROJECT CONTEXT:
 Problem Statement: ${problemStatement}
@@ -146,13 +153,13 @@ ${additionalContext ? `Additional Context: ${additionalContext}` : ''}
 SECTIONS TO GENERATE (each must be unique and section-specific):
 ${sectionDetails}
 
-IMPORTANT: Return valid JSON with exact section names as keys. Each section's content must be distinctly different, focused on its specific purpose, and tailored to the project context.
+Example of correct HTML formatting for a section:
+"<h3>Key Focus Areas</h3><p>Based on the problem statement, this section should address:</p><ul><li><strong>Primary concern:</strong> Specific issue related to the problem</li><li><strong>Secondary focus:</strong> Another relevant aspect to investigate</li></ul><p>Consider how these factors impact your target users and timeline.</p>"
 
-Example format:
+Return valid JSON with exact section names as keys and HTML-formatted content as values:
 {
-  "Problem Statement": "Content specifically about defining the problem...",
-  "Research Objectives": "DIFFERENT content about research goals and questions...",
-  "User Requirements": "DIFFERENT content about user needs..."
+  "Problem Statement": "<h3>...</h3><p>...</p>",
+  "Research Objectives": "<h3>...</h3><ul><li>...</li></ul>"
 }`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -166,7 +173,7 @@ Example format:
         messages: [
           { 
             role: "system", 
-            content: "You are an expert UX researcher. Generate unique, specific content for each document section. Never repeat content between sections. Always return valid JSON with section titles as keys." 
+            content: "You are an expert UX researcher. Generate unique, specific HTML-formatted content for each document section. Use HTML tags like <h3>, <p>, <strong>, <ul>, <li> for formatting. Never use markdown syntax. Never repeat content between sections. Always return valid JSON with section titles as keys and HTML content as values." 
           },
           { role: "user", content: prompt }
         ],
@@ -214,10 +221,10 @@ Example format:
       sectionContent = JSON.parse(jsonStr);
     } catch (parseError) {
       console.error("Failed to parse AI response:", parseError);
-      // Create unique default content for each section
-      sections.forEach((section, index) => {
+      // Create unique default content for each section with HTML formatting
+      sections.forEach((section) => {
         const desc = SECTION_DESCRIPTIONS[section] || '';
-        sectionContent[section] = `${desc}\n\nAdd your content here for ${section}. Consider how this relates to: ${problemStatement.slice(0, 100)}...`;
+        sectionContent[section] = `<h3>${section}</h3><p>${desc}</p><p>Add your content here. Consider how this relates to: ${problemStatement.slice(0, 100)}...</p>`;
       });
     }
 
@@ -239,7 +246,7 @@ Example format:
 
       return {
         title,
-        content: foundContent || `${SECTION_DESCRIPTIONS[title] || ''}\n\nAdd your content here for ${title}...`,
+        content: foundContent || `<h3>${title}</h3><p>${SECTION_DESCRIPTIONS[title] || ''}</p><p>Add your content here...</p>`,
         section_order: index
       };
     });

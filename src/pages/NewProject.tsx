@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { FileText, ArrowLeft, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -30,6 +31,7 @@ export default function NewProject() {
     targetUsers: '',
     additionalContext: '',
   });
+  const [generateStarterContent, setGenerateStarterContent] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (authLoading) {
@@ -70,6 +72,7 @@ export default function NewProject() {
             timeline: formData.timeline,
             targetUsers: formData.targetUsers,
             additionalContext: formData.additionalContext,
+            generateContent: generateStarterContent,
           },
         }
       );
@@ -95,13 +98,26 @@ export default function NewProject() {
 
       if (projectError) throw projectError;
 
-      // Create sections with generated content
-      const sections = generatedData.sections.map((section: { title: string; content: string; section_order: number }) => ({
-        project_id: project.id,
-        title: section.title,
-        content: section.content,
-        section_order: section.section_order,
-      }));
+      // Create sections - use generated content or blank based on user preference
+      const sections = generatedData.sections.map((section: { title: string; content: string; section_order: number }) => {
+        let content = section.content;
+        
+        // If user opted for blank sections, only populate Problem Statement
+        if (!generateStarterContent) {
+          if (section.title === 'Problem Statement') {
+            content = `<p>${formData.problemStatement}</p>`;
+          } else {
+            content = '';
+          }
+        }
+        
+        return {
+          project_id: project.id,
+          title: section.title,
+          content,
+          section_order: section.section_order,
+        };
+      });
 
       const { error: sectionsError } = await supabase
         .from('sections')
@@ -221,6 +237,28 @@ export default function NewProject() {
                   onChange={(e) => setFormData({ ...formData, additionalContext: e.target.value })}
                   rows={3}
                 />
+              </div>
+
+              <div className="rounded-lg border bg-muted/30 p-4">
+                <div className="flex items-start space-x-3">
+                  <Checkbox
+                    id="generateStarter"
+                    checked={generateStarterContent}
+                    onCheckedChange={(checked) => setGenerateStarterContent(checked === true)}
+                    className="mt-0.5"
+                  />
+                  <div className="space-y-1">
+                    <Label
+                      htmlFor="generateStarter"
+                      className="text-sm font-medium cursor-pointer"
+                    >
+                      Generate starter content for sections
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Uncheck for blank sections (only Problem Statement will be populated)
+                    </p>
+                  </div>
+                </div>
               </div>
 
               <Button type="submit" className="w-full" disabled={isSubmitting}>
