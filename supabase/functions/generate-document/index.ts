@@ -72,6 +72,37 @@ const INDUSTRY_SECTIONS: Record<string, string[]> = {
   ]
 };
 
+// Descriptions for each section type to guide AI
+const SECTION_DESCRIPTIONS: Record<string, string> = {
+  "Problem Statement": "Define the core problem being investigated. State the issue clearly and explain its impact.",
+  "Research Objectives": "List specific goals, questions, and hypotheses this research will answer.",
+  "User Requirements": "Document what users need from the solution - functional and non-functional requirements.",
+  "Regulatory Context (HIPAA/FDA)": "Outline compliance requirements, regulatory considerations, and legal constraints.",
+  "Clinical Workflow Analysis": "Map current workflows, processes, and identify pain points in clinical settings.",
+  "User Personas": "Describe key user types, their characteristics, goals, and pain points.",
+  "FMEA Analysis": "Document failure modes, effects analysis, and risk assessment.",
+  "Patient Safety Requirements": "Outline safety considerations, risk mitigation, and patient protection needs.",
+  "Cybersecurity Requirements": "Detail security requirements, data protection, and threat considerations.",
+  "Research Findings": "Space for documenting research results, insights, and data collected.",
+  "Design Implications": "How findings translate to design decisions and recommendations.",
+  "Regulatory Compliance (SEC/KYC/AML)": "Document compliance requirements for financial regulations.",
+  "Security & Privacy Requirements": "Outline data security and user privacy requirements.",
+  "Risk Analysis": "Assess potential risks and mitigation strategies.",
+  "Fraud Prevention Considerations": "Document fraud risks and prevention measures.",
+  "Market Analysis": "Analyze market conditions, competitors, and opportunities.",
+  "Stakeholder Analysis": "Identify and analyze key stakeholders and their interests.",
+  "Integration Requirements": "Document technical integration needs and dependencies.",
+  "Implementation & Adoption Considerations": "Plan for rollout, training, and user adoption.",
+  "ROI & Success Metrics": "Define success criteria and expected return on investment.",
+  "Conversion Funnel Analysis": "Analyze user journey through conversion steps.",
+  "Cart Abandonment Insights": "Investigate why users abandon carts and potential solutions.",
+  "Competitive Benchmarking": "Compare against competitors and industry standards.",
+  "Customer Journey Mapping": "Map the complete customer experience journey.",
+  "Competitive Analysis": "Analyze competitors, their strengths and weaknesses.",
+  "Technical Constraints": "Document technical limitations and requirements.",
+  "Success Metrics": "Define how success will be measured."
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -88,26 +119,41 @@ serve(async (req) => {
     // Get sections for the industry
     const sections = INDUSTRY_SECTIONS[industry] || INDUSTRY_SECTIONS["General/Other"];
 
-    const prompt = `You are helping create a UX research document. Generate brief starter content for each section below.
+    // Build detailed section list with descriptions
+    const sectionDetails = sections.map((title, index) => {
+      const desc = SECTION_DESCRIPTIONS[title] || `Document relevant information for ${title}.`;
+      return `${index + 1}. "${title}" - ${desc}`;
+    }).join('\n');
 
-Requirements:
+    const prompt = `You are a UX research expert helping create a comprehensive research document. Generate UNIQUE and SPECIFIC starter content for EACH section listed below.
+
+CRITICAL REQUIREMENTS:
+- Each section MUST have COMPLETELY DIFFERENT content
+- Content must be specific to that section's purpose
 - Each section should be 5-10 lines (50-100 words)
-- Explain what content belongs in this section
-- Include 1-2 light examples relevant to the specific problem statement
+- Include 1-2 concrete examples relevant to the problem statement AND the specific section
 - Use bullet points or short paragraphs for readability
-- Be helpful but not prescriptive - this is a starting point for the researcher to build on
-- Reference the problem statement naturally but don't over-personalize
+- Reference the problem statement naturally throughout
+- Make content actionable and helpful as a starting point
 
+PROJECT CONTEXT:
 Problem Statement: ${problemStatement}
 Industry: ${industry}
 ${timeline ? `Timeline: ${timeline}` : ''}
 ${targetUsers ? `Target Users: ${targetUsers}` : ''}
 ${additionalContext ? `Additional Context: ${additionalContext}` : ''}
 
-Generate starter content for these sections:
-${sections.join('\n')}
+SECTIONS TO GENERATE (each must be unique and section-specific):
+${sectionDetails}
 
-Return as JSON with section names as keys and starter content as values. Use plain text with line breaks for formatting.`;
+IMPORTANT: Return valid JSON with exact section names as keys. Each section's content must be distinctly different, focused on its specific purpose, and tailored to the project context.
+
+Example format:
+{
+  "Problem Statement": "Content specifically about defining the problem...",
+  "Research Objectives": "DIFFERENT content about research goals and questions...",
+  "User Requirements": "DIFFERENT content about user needs..."
+}`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -118,10 +164,13 @@ Return as JSON with section names as keys and starter content as values. Use pla
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
         messages: [
-          { role: "system", content: "You are a helpful UX research assistant. Always return valid JSON." },
+          { 
+            role: "system", 
+            content: "You are an expert UX researcher. Generate unique, specific content for each document section. Never repeat content between sections. Always return valid JSON with section titles as keys." 
+          },
           { role: "user", content: prompt }
         ],
-        max_tokens: 4000,
+        max_tokens: 6000,
       }),
     });
 
@@ -146,28 +195,54 @@ Return as JSON with section names as keys and starter content as values. Use pla
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content;
 
+    console.log("AI Response:", content);
+
     // Parse the JSON response
     let sectionContent: Record<string, string> = {};
     try {
-      // Try to extract JSON from the response
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      // Try to extract JSON from the response (handle markdown code blocks)
+      let jsonStr = content;
+      const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
       if (jsonMatch) {
-        sectionContent = JSON.parse(jsonMatch[0]);
+        jsonStr = jsonMatch[1];
+      } else {
+        const objectMatch = content.match(/\{[\s\S]*\}/);
+        if (objectMatch) {
+          jsonStr = objectMatch[0];
+        }
       }
+      sectionContent = JSON.parse(jsonStr);
     } catch (parseError) {
       console.error("Failed to parse AI response:", parseError);
-      // Create default content for each section
-      sections.forEach(section => {
-        sectionContent[section] = `Add your content here for ${section}...`;
+      // Create unique default content for each section
+      sections.forEach((section, index) => {
+        const desc = SECTION_DESCRIPTIONS[section] || '';
+        sectionContent[section] = `${desc}\n\nAdd your content here for ${section}. Consider how this relates to: ${problemStatement.slice(0, 100)}...`;
       });
     }
 
-    // Ensure all sections have content
-    const result = sections.map((title, index) => ({
-      title,
-      content: sectionContent[title] || `Add your content here for ${title}...`,
-      section_order: index
-    }));
+    // Ensure all sections have content and match exact titles
+    const result = sections.map((title, index) => {
+      // Try to find content with exact match or close match
+      let foundContent = sectionContent[title];
+      
+      // If not found, try case-insensitive or partial match
+      if (!foundContent) {
+        const lowerTitle = title.toLowerCase();
+        for (const [key, value] of Object.entries(sectionContent)) {
+          if (key.toLowerCase() === lowerTitle || key.toLowerCase().includes(lowerTitle) || lowerTitle.includes(key.toLowerCase())) {
+            foundContent = value;
+            break;
+          }
+        }
+      }
+
+      return {
+        title,
+        content: foundContent || `${SECTION_DESCRIPTIONS[title] || ''}\n\nAdd your content here for ${title}...`,
+        section_order: index
+      };
+    });
 
     return new Response(JSON.stringify({ sections: result }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
