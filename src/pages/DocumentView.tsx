@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import DOMPurify from 'dompurify';
 import { Link, Navigate, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -397,7 +398,11 @@ export default function DocumentView() {
     // Helper to parse and render HTML content
     const renderHTMLContent = (htmlContent: string) => {
       const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = htmlContent;
+      // Sanitize HTML to prevent XSS attacks
+      tempDiv.innerHTML = DOMPurify.sanitize(htmlContent, {
+        ALLOWED_TAGS: ['h2', 'h3', 'p', 'strong', 'b', 'ul', 'ol', 'li', 'em', 'i', 'br'],
+        ALLOWED_ATTR: []
+      });
       
       const processNode = (node: Node) => {
         if (node.nodeType === Node.TEXT_NODE) {
