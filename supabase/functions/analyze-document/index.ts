@@ -137,9 +137,20 @@ serve(async (req) => {
         });
       }
 
+      // Verify this is actually an Office Open XML document, not just any ZIP
+      const decoder = new TextDecoder("utf-8", { fatal: false });
+      const rawContent = decoder.decode(bytes);
+      const hasOfficeMarkers = rawContent.includes("[Content_Types].xml") || 
+                                rawContent.includes("word/document.xml") ||
+                                rawContent.includes("word/_rels");
+      if (!hasOfficeMarkers) {
+        return new Response(JSON.stringify({ error: "Invalid DOCX file. The file does not contain valid Office document structure." }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       try {
-        const decoder = new TextDecoder("utf-8", { fatal: false });
-        const rawContent = decoder.decode(bytes);
 
         // Limit decoded content to prevent memory issues
         const safeContent = rawContent.length > MAX_EXTRACTED_LENGTH
