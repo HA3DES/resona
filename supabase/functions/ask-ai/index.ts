@@ -87,7 +87,10 @@ Provide a helpful, detailed response using proper markdown formatting:
       }
       const errorText = await response.text();
       console.error("AI gateway error:", response.status, errorText);
-      throw new Error("AI gateway error");
+      return new Response(JSON.stringify({ error: "Service temporarily unavailable. Please try again later." }), {
+        status: 503,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     return new Response(response.body, {
@@ -96,7 +99,7 @@ Provide a helpful, detailed response using proper markdown formatting:
   } catch (error) {
     console.error("ask-ai error:", error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      JSON.stringify({ error: "An unexpected error occurred. Please try again." }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

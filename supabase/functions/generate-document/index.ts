@@ -245,7 +245,10 @@ Return valid JSON with exact section names as keys and HTML-formatted content as
       }
       const errorText = await response.text();
       console.error("AI gateway error:", response.status, errorText);
-      throw new Error("AI gateway error");
+      return new Response(JSON.stringify({ error: "Service temporarily unavailable. Please try again later." }), {
+        status: 503,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const data = await response.json();
@@ -306,7 +309,7 @@ Return valid JSON with exact section names as keys and HTML-formatted content as
   } catch (error) {
     console.error("generate-document error:", error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      JSON.stringify({ error: "An unexpected error occurred. Please try again." }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

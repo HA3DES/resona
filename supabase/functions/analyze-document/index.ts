@@ -241,7 +241,10 @@ Return valid JSON in this exact format:
       }
       const errorText = await response.text();
       console.error("AI gateway error:", response.status, errorText);
-      throw new Error("AI analysis failed");
+      return new Response(JSON.stringify({ error: "Service temporarily unavailable. Please try again later." }), {
+        status: 503,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const data = await response.json();
@@ -278,7 +281,7 @@ Return valid JSON in this exact format:
   } catch (error) {
     console.error("analyze-document error:", error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      JSON.stringify({ error: "An unexpected error occurred. Please try again." }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
