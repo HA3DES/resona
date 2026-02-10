@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Dialog,
@@ -7,32 +8,79 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2, Copy, Plus, Send } from 'lucide-react';
 import { toast } from 'sonner';
+
+interface Section {
+  id: string;
+  title: string;
+  content: string;
+}
 
 interface AskAIModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   documentContext: string;
-  currentSection: string;
-  currentContent: string;
-  onInsert: (content: string) => void;
+  sections: Section[];
+  defaultSectionId: string;
+  onInsert: (content: string, sectionId: string) => void;
+}
+
+/** Convert markdown text to simple HTML suitable for Tiptap */
+function markdownToHtml(md: string): string {
+  let html = md
+    // headings
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^# (.+)$/gm, '<h3>$1</h3>')
+    // bold
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    // italic
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    // unordered list items
+    .replace(/^[*-] (.+)$/gm, '<li>$1</li>');
+
+  // wrap consecutive <li> in <ul>
+  html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>');
+
+  // wrap remaining plain lines in <p>
+  html = html
+    .split('\n')
+    .map(line => {
+      const trimmed = line.trim();
+      if (!trimmed) return '';
+      if (trimmed.startsWith('<h3>') || trimmed.startsWith('<ul>') || trimmed.startsWith('<li>') || trimmed.startsWith('</')) return trimmed;
+      return `<p>${trimmed}</p>`;
+    })
+    .filter(Boolean)
+    .join('\n');
+
+  return html;
 }
 
 export default function AskAIModal({
   open,
   onOpenChange,
   documentContext,
-  currentSection,
-  currentContent,
+  sections,
+  defaultSectionId,
   onInsert,
 }: AskAIModalProps) {
   const [question, setQuestion] = useState('');
   const [response, setResponse] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [targetSectionId, setTargetSectionId] = useState(defaultSectionId);
+
+  const currentSection = sections.find(s => s.id === targetSectionId);
 
   const handleSubmit = async () => {
     if (!question.trim() || isLoading) return;
@@ -57,8 +105,8 @@ export default function AskAIModal({
           },
           body: JSON.stringify({
             documentContext,
-            currentSection,
-            currentContent,
+            currentSection: currentSection?.title || '',
+            currentContent: currentSection?.content || '',
             userQuestion: question,
           }),
         }
@@ -128,7 +176,8 @@ export default function AskAIModal({
   };
 
   const handleInsert = () => {
-    onInsert(response);
+    const htmlContent = markdownToHtml(response);
+    onInsert(htmlContent, targetSectionId);
     handleReset();
   };
 
@@ -139,18 +188,18 @@ export default function AskAIModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Ask AI</DialogTitle>
           <DialogDescription>
-            Get AI assistance with your "{currentSection}" section
+            Get AI assistance across your entire project
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="flex flex-col gap-4 min-h-0 flex-1">
           <div className="flex gap-2">
             <Textarea
-              placeholder="Ask AI to help with this section... (e.g., 'Expand on user pain points', 'Suggest persona characteristics', 'Draft this section')"
+              placeholder="Ask AI anything about your project... (e.g., 'Expand on user pain points', 'Draft market analysis', 'Suggest persona characteristics')"
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               onKeyDown={(e) => {
@@ -172,34 +221,50 @@ export default function AskAIModal({
           </div>
 
           {(response || isLoading) && (
-            <div className="rounded-lg border bg-muted/50 p-4">
-              <ScrollArea className="max-h-64">
-                {isLoading && !response && (
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Thinking...
-                  </div>
-                )}
-                {response && (
-                  <div className="whitespace-pre-wrap text-sm">{response}</div>
-                )}
-              </ScrollArea>
+            <div className="rounded-lg border bg-muted/50 p-4 overflow-y-auto min-h-0 max-h-[40vh]">
+              {isLoading && !response && (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Thinking...
+                </div>
+              )}
+              {response && (
+                <div className="prose prose-sm dark:prose-invert max-w-none">
+                  <ReactMarkdown>{response}</ReactMarkdown>
+                </div>
+              )}
             </div>
           )}
 
           {response && (
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={handleCopy}>
-                <Copy className="mr-2 h-4 w-4" />
-                Copy
-              </Button>
-              <Button onClick={handleInsert}>
-                <Plus className="mr-2 h-4 w-4" />
-                Insert into document
-              </Button>
-              <Button variant="ghost" onClick={handleReset}>
-                Ask another question
-              </Button>
+            <div className="flex flex-col gap-3 shrink-0">
+              {/* Section picker for insertion */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground whitespace-nowrap">Insert into:</span>
+                <Select value={targetSectionId} onValueChange={setTargetSectionId}>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sections.map(s => (
+                      <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={handleCopy}>
+                  <Copy className="mr-2 h-4 w-4" />
+                  Copy
+                </Button>
+                <Button onClick={handleInsert}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Insert into document
+                </Button>
+                <Button variant="ghost" onClick={handleReset}>
+                  Ask another question
+                </Button>
+              </div>
             </div>
           )}
         </div>

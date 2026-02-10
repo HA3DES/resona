@@ -48,13 +48,13 @@ serve(async (req) => {
 Full Document Context:
 ${documentContext}
 
-Current Section: ${currentSection}
-Current Section Content:
-${currentContent}
-
+${currentSection ? `The user is currently focused on the "${currentSection}" section with this content:\n${currentContent}\n` : ''}
 User Question: ${userQuestion}
 
-Provide a helpful, concise response. If suggesting content to add to the document, format it clearly with bullet points or paragraphs. Keep responses focused and actionable.`;
+Provide a helpful, detailed response using proper markdown formatting:
+- Use ## for headings, **bold** for emphasis, bullet points for lists
+- Keep responses focused, actionable, and well-structured
+- You may reference or suggest content for any section of the document`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
