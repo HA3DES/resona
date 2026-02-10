@@ -1,1 +1,10 @@
 project_id = "dixkbqjxhzwidnkyoxjm"
+
+[functions.ask-ai]
+verify_jwt = false
+
+[functions.generate-document]
+verify_jwt = false
+
+[functions.analyze-document]
+verify_jwt = false
