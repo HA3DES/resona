@@ -352,29 +352,25 @@ export default function DocumentView() {
     }
   };
 
-  const handleInsertAIContent = (content: string) => {
-    // Insert into the section that was active when Ask AI was opened
-    const targetId = askAISectionId;
-    if (!targetId) return;
-    
-    const targetSection = sections.find(s => s.id === targetId);
+  const handleInsertAIContent = (content: string, sectionId: string) => {
+    const targetSection = sections.find(s => s.id === sectionId);
     if (!targetSection) return;
 
     const newContent = targetSection.content + '\n\n' + content;
     
     // Update sections array
-    setSections(prev => prev.map(s => s.id === targetId ? { ...s, content: newContent } : s));
+    setSections(prev => prev.map(s => s.id === sectionId ? { ...s, content: newContent } : s));
     
     // If the target section is currently active, update activeSection too
-    if (activeSection?.id === targetId) {
+    if (activeSection?.id === sectionId) {
       setActiveSection(prev => prev ? { ...prev, content: newContent } : null);
     }
     
     // Save to database
-    debouncedSave(targetId, newContent);
+    debouncedSave(sectionId, newContent);
     
     setAskAIOpen(false);
-    toast.success('AI content inserted');
+    toast.success(`AI content inserted into "${targetSection.title}"`);
   };
 
   // PDF Export function with proper HTML parsing
@@ -736,20 +732,14 @@ export default function DocumentView() {
       </AlertDialog>
 
       {/* Ask AI Modal */}
-      {askAISectionId && (() => {
-        const askAISection = sections.find(s => s.id === askAISectionId);
-        if (!askAISection) return null;
-        return (
-          <AskAIModal
-            open={askAIOpen}
-            onOpenChange={setAskAIOpen}
-            documentContext={documentContext}
-            currentSection={askAISection.title}
-            currentContent={askAISection.content}
-            onInsert={handleInsertAIContent}
-          />
-        );
-      })()}
+      <AskAIModal
+        open={askAIOpen}
+        onOpenChange={setAskAIOpen}
+        documentContext={documentContext}
+        sections={sections}
+        defaultSectionId={askAISectionId || sections[0]?.id || ''}
+        onInsert={handleInsertAIContent}
+      />
     </div>
   );
 }
