@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { FileText, ArrowLeft, Loader2 } from 'lucide-react';
+import { FileText, ArrowLeft, Loader2, Upload, X, FileUp, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const INDUSTRIES = [
@@ -20,9 +20,19 @@ const INDUSTRIES = [
   'General/Other',
 ];
 
+type DocumentAnalysis = {
+  summary: string;
+  detectedIndustry: string;
+  extractedProblemStatement: string;
+  existingSections: { title: string; summary: string }[];
+  suggestedAdditionalSections: { title: string; reason: string }[];
+  extractedContent: Record<string, string>;
+};
+
 export default function NewProject() {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [formData, setFormData] = useState({
     problemStatement: '',
@@ -33,6 +43,11 @@ export default function NewProject() {
   });
   const [generateStarterContent, setGenerateStarterContent] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // File import state
+  const [importedFile, setImportedFile] = useState<File | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [documentAnalysis, setDocumentAnalysis] = useState<DocumentAnalysis | null>(null);
 
   if (authLoading) {
     return (
@@ -45,6 +60,83 @@ export default function NewProject() {
   if (!user) {
     return <Navigate to="/login" replace />;
   }
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const validTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ];
+    const validExtensions = ['.pdf', '.doc', '.docx'];
+    const hasValidExt = validExtensions.some((ext) => file.name.toLowerCase().endsWith(ext));
+
+    if (!validTypes.includes(file.type) && !hasValidExt) {
+      toast.error('Please upload a PDF, DOC, or DOCX file');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('File size must be under 10MB');
+      return;
+    }
+
+    setImportedFile(file);
+    setIsAnalyzing(true);
+    setDocumentAnalysis(null);
+
+    try {
+      const formDataBody = new FormData();
+      formDataBody.append('file', file);
+
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-document`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${session?.access_token}`,
+          },
+          body: formDataBody,
+        }
+      );
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Analysis failed');
+      }
+
+      const analysis: DocumentAnalysis = await response.json();
+      setDocumentAnalysis(analysis);
+
+      // Auto-fill form fields from analysis
+      if (analysis.extractedProblemStatement && !formData.problemStatement) {
+        setFormData((prev) => ({ ...prev, problemStatement: analysis.extractedProblemStatement }));
+      }
+      if (analysis.detectedIndustry && !formData.industry) {
+        setFormData((prev) => ({ ...prev, industry: analysis.detectedIndustry }));
+      }
+
+      toast.success('Document analyzed successfully!');
+    } catch (error) {
+      console.error('Error analyzing document:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to analyze document');
+      setImportedFile(null);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const removeFile = () => {
+    setImportedFile(null);
+    setDocumentAnalysis(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,7 +154,6 @@ export default function NewProject() {
     setIsSubmitting(true);
 
     try {
-      // Generate document structure and content via edge function
       const { data: generatedData, error: genError } = await supabase.functions.invoke(
         'generate-document',
         {
@@ -73,6 +164,7 @@ export default function NewProject() {
             targetUsers: formData.targetUsers,
             additionalContext: formData.additionalContext,
             generateContent: generateStarterContent,
+            importedDocumentAnalysis: documentAnalysis || undefined,
           },
         }
       );
@@ -81,7 +173,6 @@ export default function NewProject() {
         throw new Error(genError.message || 'Failed to generate document');
       }
 
-      // Create the project
       const { data: project, error: projectError } = await supabase
         .from('projects')
         .insert({
@@ -98,11 +189,9 @@ export default function NewProject() {
 
       if (projectError) throw projectError;
 
-      // Create sections - use generated content or blank based on user preference
       const sections = generatedData.sections.map((section: { title: string; content: string; section_order: number }) => {
         let content = section.content;
         
-        // If user opted for blank sections, only populate Problem Statement
         if (!generateStarterContent) {
           if (section.title === 'Problem Statement') {
             content = `<p>${formData.problemStatement}</p>`;
@@ -159,15 +248,109 @@ export default function NewProject() {
         <div className="mb-8">
           <h1 className="text-2xl font-bold">Create New Project</h1>
           <p className="text-muted-foreground">
-            Describe your research problem and we'll generate a structured document for you
+            Describe your research problem or import an existing document to get started
           </p>
         </div>
+
+        {/* File Import Card */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileUp className="h-5 w-5" />
+              Import Existing Document
+            </CardTitle>
+            <CardDescription>
+              Upload a PDF, DOC, or DOCX file. We'll analyze its content and suggest the right sections for your project.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!importedFile ? (
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25 bg-muted/20 px-6 py-10 transition-colors hover:border-primary/50 hover:bg-muted/40"
+              >
+                <Upload className="mb-3 h-10 w-10 text-muted-foreground/50" />
+                <p className="text-sm font-medium">Click to upload or drag a file</p>
+                <p className="mt-1 text-xs text-muted-foreground">PDF, DOC, DOCX up to 10MB</p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  className="hidden"
+                  onChange={handleFileSelect}
+                />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 rounded-lg border bg-muted/30 p-3">
+                  <FileText className="h-8 w-8 shrink-0 text-primary" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{importedFile.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {(importedFile.size / 1024).toFixed(1)} KB
+                    </p>
+                  </div>
+                  {isAnalyzing ? (
+                    <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                  ) : documentAnalysis ? (
+                    <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+                  ) : null}
+                  <Button variant="ghost" size="icon" onClick={removeFile} disabled={isAnalyzing}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                {isAnalyzing && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Analyzing document and predicting sections...
+                  </div>
+                )}
+
+                {documentAnalysis && (
+                  <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
+                    <p className="text-sm font-medium">Analysis Summary</p>
+                    <p className="text-sm text-muted-foreground">{documentAnalysis.summary}</p>
+                    
+                    {documentAnalysis.existingSections.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground mb-1">Sections found in document:</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {documentAnalysis.existingSections.map((s, i) => (
+                            <span key={i} className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                              {s.title}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {documentAnalysis.suggestedAdditionalSections.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground mb-1">Suggested additional sections:</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {documentAnalysis.suggestedAdditionalSections.map((s, i) => (
+                            <span key={i} className="inline-flex items-center rounded-full bg-accent px-2.5 py-0.5 text-xs font-medium text-accent-foreground">
+                              + {s.title}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>
             <CardTitle>Project Details</CardTitle>
             <CardDescription>
-              Provide information about your research project
+              {documentAnalysis
+                ? "We've pre-filled some fields from your document. Review and adjust as needed."
+                : 'Provide information about your research project'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -255,13 +438,15 @@ export default function NewProject() {
                       Generate starter content for sections
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      Uncheck for blank sections (only Problem Statement will be populated)
+                      {documentAnalysis
+                        ? 'Content will be generated based on your imported document and predicted sections'
+                        : 'Uncheck for blank sections (only Problem Statement will be populated)'}
                     </p>
                   </div>
                 </div>
               </div>
 
-              <Button type="submit" className="w-full" disabled={isSubmitting}>
+              <Button type="submit" className="w-full" disabled={isSubmitting || isAnalyzing}>
                 {isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
