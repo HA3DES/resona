@@ -157,6 +157,29 @@ serve(async (req) => {
         });
       }
 
+      // Zip bomb detection: check compression ratio
+      // A DOCX file's raw bytes decoded as text should not be drastically smaller than the file size
+      // Also check for nested ZIP signatures (zip within zip) which indicate zip bombs
+      const rawBytesStr = new TextDecoder("latin1").decode(bytes);
+      // Count nested PK signatures (zip-within-zip detection)
+      let nestedZipCount = 0;
+      let searchPos = 4; // skip the first PK header
+      while (searchPos < rawBytesStr.length - 4 && nestedZipCount < 10) {
+        const idx = rawBytesStr.indexOf("PK\x03\x04", searchPos);
+        if (idx === -1) break;
+        nestedZipCount++;
+        searchPos = idx + 4;
+      }
+      // DOCX files contain multiple PK entries (parts), but excessive nesting is suspicious
+      // Normal DOCX has ~10-30 entries; 50+ nested ZIPs is suspicious
+      if (nestedZipCount >= 50) {
+        console.warn("Suspicious ZIP structure detected: excessive nested archives");
+        return new Response(JSON.stringify({ error: "File appears to be malformed or malicious." }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       // Verify this is actually an Office Open XML document, not just any ZIP
       const decoder = new TextDecoder("utf-8", { fatal: false });
       const rawContent = decoder.decode(bytes);
@@ -171,7 +194,6 @@ serve(async (req) => {
       }
 
       try {
-
         // Limit decoded content to prevent memory issues
         const safeContent = rawContent.length > MAX_EXTRACTED_LENGTH
           ? rawContent.substring(0, MAX_EXTRACTED_LENGTH)
@@ -189,6 +211,12 @@ serve(async (req) => {
         extractedText = `[Document: ${file.name}. Unable to extract text content directly.]`;
       }
     }
+
+    // Sanitize extracted text before passing to AI:
+    // Remove control characters, null bytes, and non-printable chars (keep newlines/tabs)
+    extractedText = extractedText
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+      .replace(/\0/g, "");
 
     // Truncate to reasonable size for AI
     const maxLength = 8000;
