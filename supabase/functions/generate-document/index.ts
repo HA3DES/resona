@@ -134,7 +134,7 @@ serve(async (req) => {
       });
     }
 
-    const { problemStatement, industry, timeline, targetUsers, additionalContext } = await req.json();
+    const { problemStatement, industry, timeline, targetUsers, additionalContext, importedDocumentAnalysis } = await req.json();
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -142,10 +142,34 @@ serve(async (req) => {
     }
 
     // Get sections for the industry
-    const sections = INDUSTRY_SECTIONS[industry] || INDUSTRY_SECTIONS["General/Other"];
+    let sections = INDUSTRY_SECTIONS[industry] || INDUSTRY_SECTIONS["General/Other"];
+
+    // If we have an imported document analysis, merge suggested additional sections
+    let importedContext = "";
+    if (importedDocumentAnalysis) {
+      const { existingSections, suggestedAdditionalSections, extractedContent, summary } = importedDocumentAnalysis;
+      
+      // Add any suggested sections that aren't already in the list
+      if (suggestedAdditionalSections?.length) {
+        const existingLower = new Set(sections.map((s: string) => s.toLowerCase()));
+        for (const suggested of suggestedAdditionalSections) {
+          if (!existingLower.has(suggested.title.toLowerCase())) {
+            sections.push(suggested.title);
+            SECTION_DESCRIPTIONS[suggested.title] = suggested.reason || `Document relevant information for ${suggested.title}.`;
+          }
+        }
+      }
+
+      importedContext = `\n\nIMPORTED DOCUMENT CONTEXT:
+The user has imported an existing document. Here's what was found:
+Summary: ${summary || "N/A"}
+Existing sections found: ${existingSections?.map((s: any) => `${s.title} (${s.summary})`).join(", ") || "None"}
+Extracted content is available for some sections. Build upon this content rather than starting from scratch.
+${extractedContent ? `\nExtracted content from document:\n${JSON.stringify(extractedContent)}` : ""}`;
+    }
 
     // Build detailed section list with descriptions
-    const sectionDetails = sections.map((title, index) => {
+    const sectionDetails = sections.map((title: string, index: number) => {
       const desc = SECTION_DESCRIPTIONS[title] || `Document relevant information for ${title}.`;
       return `${index + 1}. "${title}" - ${desc}`;
     }).join('\n');
@@ -173,7 +197,7 @@ Problem Statement: ${problemStatement}
 Industry: ${industry}
 ${timeline ? `Timeline: ${timeline}` : ''}
 ${targetUsers ? `Target Users: ${targetUsers}` : ''}
-${additionalContext ? `Additional Context: ${additionalContext}` : ''}
+${additionalContext ? `Additional Context: ${additionalContext}` : ''}${importedContext}
 
 SECTIONS TO GENERATE (each must be unique and section-specific):
 ${sectionDetails}
