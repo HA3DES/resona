@@ -75,33 +75,33 @@ const INDUSTRY_SECTIONS: Record<string, string[]> = {
 
 // Descriptions for each section type to guide AI
 const SECTION_DESCRIPTIONS: Record<string, string> = {
-  "Problem Statement": "Define the core problem being investigated. State the issue clearly and explain its impact.",
-  "Research Objectives": "List specific goals, questions, and hypotheses this research will answer.",
-  "User Requirements": "Document what users need from the solution - functional and non-functional requirements.",
-  "Regulatory Context (HIPAA/FDA)": "Outline compliance requirements, regulatory considerations, and legal constraints.",
-  "Clinical Workflow Analysis": "Map current workflows, processes, and identify pain points in clinical settings.",
-  "User Personas": "Describe key user types, their characteristics, goals, and pain points.",
-  "FMEA Analysis": "Document failure modes, effects analysis, and risk assessment.",
-  "Patient Safety Requirements": "Outline safety considerations, risk mitigation, and patient protection needs.",
-  "Cybersecurity Requirements": "Detail security requirements, data protection, and threat considerations.",
-  "Research Findings": "Space for documenting research results, insights, and data collected.",
-  "Design Implications": "How findings translate to design decisions and recommendations.",
-  "Regulatory Compliance (SEC/KYC/AML)": "Document compliance requirements for financial regulations.",
-  "Security & Privacy Requirements": "Outline data security and user privacy requirements.",
-  "Risk Analysis": "Assess potential risks and mitigation strategies.",
-  "Fraud Prevention Considerations": "Document fraud risks and prevention measures.",
-  "Market Analysis": "Analyze market conditions, competitors, and opportunities.",
-  "Stakeholder Analysis": "Identify and analyze key stakeholders and their interests.",
-  "Integration Requirements": "Document technical integration needs and dependencies.",
-  "Implementation & Adoption Considerations": "Plan for rollout, training, and user adoption.",
-  "ROI & Success Metrics": "Define success criteria and expected return on investment.",
-  "Conversion Funnel Analysis": "Analyze user journey through conversion steps.",
-  "Cart Abandonment Insights": "Investigate why users abandon carts and potential solutions.",
-  "Competitive Benchmarking": "Compare against competitors and industry standards.",
-  "Customer Journey Mapping": "Map the complete customer experience journey.",
-  "Competitive Analysis": "Analyze competitors, their strengths and weaknesses.",
-  "Technical Constraints": "Document technical limitations and requirements.",
-  "Success Metrics": "Define how success will be measured."
+  "Problem Statement": "Define the core problem with specific impact metrics (e.g., revenue loss, user drop-off rates, support ticket volume). Quantify the business and user impact.",
+  "Research Objectives": "List 4-6 specific research questions with measurable success criteria. Specify methods to be used (e.g., 'moderated usability testing with 12 participants across 3 segments') and hypotheses to validate.",
+  "User Requirements": "Document functional and non-functional requirements with priority levels (Must-Have, Should-Have, Nice-to-Have). Include specific performance targets and accessibility standards.",
+  "Regulatory Context (HIPAA/FDA)": "Outline specific compliance requirements with regulation references (e.g., HIPAA §164.312 for encryption). Include audit trail requirements and data retention policies.",
+  "Clinical Workflow Analysis": "Map current vs. proposed workflows with time-on-task measurements. Identify specific pain points with severity ratings and frequency of occurrence.",
+  "User Personas": "Create 2-3 detailed personas with name, age, role, tech proficiency, device preferences, behavioral patterns, a direct frustration quote, and primary goals. Base on realistic demographic data.",
+  "FMEA Analysis": "Document failure modes with Risk Priority Numbers (RPN = Severity × Occurrence × Detection). Include specific mitigation actions and responsible parties.",
+  "Patient Safety Requirements": "Outline safety requirements referencing IEC 62366 usability engineering standards. Include specific risk scenarios with likelihood and severity ratings.",
+  "Cybersecurity Requirements": "Detail security requirements per NIST framework. Specify encryption standards, authentication methods, and penetration testing scope.",
+  "Research Findings": "Present findings with supporting data points, statistical significance where applicable, and severity ratings (Critical/High/Medium/Low). Cross-reference specific personas affected.",
+  "Design Implications": "Translate each research finding into a specific design recommendation. Reference the exact persona pain points and metrics from earlier sections. Include priority and estimated impact.",
+  "Regulatory Compliance (SEC/KYC/AML)": "Document specific regulatory requirements with section references. Include compliance testing criteria and audit requirements.",
+  "Security & Privacy Requirements": "Specify encryption standards (AES-256, TLS 1.3), authentication requirements (MFA, biometric), data classification levels, and GDPR/CCPA compliance needs.",
+  "Risk Analysis": "Assess risks using a probability × impact matrix. Include specific mitigation strategies with owners, timelines, and residual risk levels.",
+  "Fraud Prevention Considerations": "Document specific fraud vectors with estimated exposure. Include detection methods, false positive rates, and escalation procedures.",
+  "Market Analysis": "Include TAM/SAM/SOM figures, market growth rates, key trends with data sources, and competitive landscape positioning with specific market share data.",
+  "Stakeholder Analysis": "Map stakeholders on an influence/interest matrix. Include specific decision-makers, their concerns, preferred communication channels, and sign-off requirements.",
+  "Integration Requirements": "Document specific APIs, data formats, latency requirements, and third-party dependencies. Include integration architecture and fallback strategies.",
+  "Implementation & Adoption Considerations": "Plan phased rollout with specific milestones, training requirements by user segment, change management tactics, and adoption KPIs.",
+  "ROI & Success Metrics": "Define specific KPIs with baseline values, target values, and measurement timelines. Include ROI calculation methodology and break-even analysis.",
+  "Conversion Funnel Analysis": "Map each funnel stage with current conversion rates and drop-off points. Include industry benchmarks for comparison and specific optimization opportunities.",
+  "Cart Abandonment Insights": "Analyze abandonment by stage with specific rates (e.g., 'shipping page: 23% drop-off'). Include top abandonment reasons from exit surveys and recovery strategies.",
+  "Competitive Benchmarking": "Compare 3-5 named competitors on specific UX dimensions. Reference their actual features and approaches (e.g., Amazon's 1-Click, Stripe's progressive onboarding).",
+  "Customer Journey Mapping": "Map end-to-end journey with emotional highs/lows, specific touchpoints, channel transitions, and moments of truth. Include time spent at each stage.",
+  "Competitive Analysis": "Analyze 3-5 named competitors with specific strengths, weaknesses, and UX approaches. Include feature comparison matrix and differentiation opportunities.",
+  "Technical Constraints": "Document specific platform requirements, browser/device support matrix, performance budgets (e.g., LCP < 2.5s), and infrastructure limitations.",
+  "Success Metrics": "Define 5-8 specific KPIs with current baselines, target values, measurement methods, and review cadence. Include both leading and lagging indicators."
 };
 
 serve(async (req) => {
@@ -174,15 +174,22 @@ ${extractedContent ? `\nExtracted content from document:\n${JSON.stringify(extra
       return `${index + 1}. "${title}" - ${desc}`;
     }).join('\n');
 
-    const prompt = `You are a UX research expert helping create a comprehensive research document. Generate UNIQUE and SPECIFIC starter content for EACH section listed below in HTML format.
+    const prompt = `Generate a professional UX research document with UNIQUE, RESEARCH-GRADE content for every section below. This should read like a deliverable from a senior UX research consultant — not a generic template.
 
 CRITICAL REQUIREMENTS:
-- Each section MUST have COMPLETELY DIFFERENT content
-- Content must be specific to that section's purpose
-- Each section should be 5-10 lines (50-100 words)
-- Include 1-2 concrete examples relevant to the problem statement AND the specific section
-- Reference the problem statement naturally throughout
-- Make content actionable and helpful as a starting point
+- Each section MUST have COMPLETELY DIFFERENT content — no overlap or repetition.
+- Each section should be 150-250 words with substantive depth.
+- Include specific, realistic metrics and data points relevant to the ${industry} industry (e.g., actual conversion rates, task completion benchmarks, market figures).
+- Every section MUST include at least one actionable recommendation or concrete next step.
+- Later sections (Research Findings, Design Implications) MUST cross-reference specific findings from earlier sections by name — cite the exact personas, metrics, or pain points introduced earlier.
+- Use precise language: instead of "users struggle" say "67% of participants failed to complete the checkout flow within 3 minutes"; instead of "significant improvement" say "reduce error rate from 23% to below 8%".
+
+SECTION-SPECIFIC DEPTH:
+- User Personas: Create realistic personas with name, age, job title, experience level, device preferences, a behavioral pattern, a frustration quote in their own voice, and a key goal.
+- Competitive Benchmarking / Competitive Analysis: Name real companies and describe their specific UX approaches (e.g., "Amazon's 1-Click reduces checkout friction; Shopify's Shop Pay achieves 1.72x higher conversion than guest checkout").
+- Research Methodology / Research Objectives: Specify exact methods with participant counts and segments (e.g., "moderated usability testing with 12 participants across 3 user segments" not "user testing").
+- Research Findings: Present findings with data, severity ratings (Critical/High/Medium/Low), and affected user segments.
+- Market Analysis: Include realistic market size, growth rates, and competitive landscape data.
 
 HTML FORMATTING RULES (VERY IMPORTANT):
 - Use <h3> for sub-headings within sections
@@ -202,9 +209,6 @@ ${additionalContext ? `Additional Context: ${additionalContext}` : ''}${imported
 SECTIONS TO GENERATE (each must be unique and section-specific):
 ${sectionDetails}
 
-Example of correct HTML formatting for a section:
-"<h3>Key Focus Areas</h3><p>Based on the problem statement, this section should address:</p><ul><li><strong>Primary concern:</strong> Specific issue related to the problem</li><li><strong>Secondary focus:</strong> Another relevant aspect to investigate</li></ul><p>Consider how these factors impact your target users and timeline.</p>"
-
 Return valid JSON with exact section names as keys and HTML-formatted content as values:
 {
   "Problem Statement": "<h3>...</h3><p>...</p>",
@@ -220,13 +224,13 @@ Return valid JSON with exact section names as keys and HTML-formatted content as
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
         messages: [
-          { 
-            role: "system", 
-            content: "You are an expert UX researcher. Generate unique, specific HTML-formatted content for each document section. Use HTML tags like <h3>, <p>, <strong>, <ul>, <li> for formatting. Never use markdown syntax. Never repeat content between sections. Always return valid JSON with section titles as keys and HTML content as values." 
+          {
+            role: "system",
+            content: "You are a senior UX research consultant producing a professional research deliverable. Generate unique, deeply specific HTML-formatted content for each document section.\n\nQUALITY STANDARDS:\n- Write at the depth of a professional UX research consultant's deliverable — not generic overviews.\n- Include specific, realistic metrics, percentages, and benchmarks relevant to the industry (e.g., 'cart abandonment rate of 68.7%' not 'high abandonment').\n- Every section MUST contain at least one actionable insight or concrete recommendation.\n- Use precise language — replace vague phrases like 'significant improvement' with specific targets like 'reduce task completion time from 4.2 minutes to under 2 minutes'.\n- Each section MUST cross-reference findings from earlier sections by name. For example, Design Implications must cite specific pain points from User Personas and data from Research Findings.\n\nSECTION-SPECIFIC RULES:\n- User Personas: Include demographic details (age, role, experience level), behavioral patterns, device preferences, tech proficiency, and a direct quote representing the persona's internal monologue.\n- Competitive Benchmarking / Competitive Analysis: Reference real-world companies and their known UX approaches (e.g., Amazon's 1-Click ordering, Shopify's accelerated checkout, Stripe's developer-first onboarding).\n- Research Methodology / Research Objectives: Specify exact methods with sample sizes (e.g., 'moderated usability testing with 12 participants across 3 segments' not 'user testing').\n- Research Findings: Present findings with supporting data points and severity ratings.\n- Market Analysis: Include market size figures, growth rates, and trend data.\n\nFORMATTING:\n- Use HTML tags: <h3>, <p>, <strong>, <ul>, <li>. Never use markdown syntax.\n- Never repeat content between sections.\n- Always return valid JSON with section titles as keys and HTML content as values."
           },
           { role: "user", content: prompt }
         ],
-        max_tokens: 6000,
+        max_tokens: 8000,
       }),
     });
 
