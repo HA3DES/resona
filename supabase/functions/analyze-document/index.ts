@@ -63,6 +63,20 @@ serve(async (req) => {
       );
     }
 
+    // Validate MIME type server-side
+    const allowedMimeTypes = [
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/octet-stream", // fallback for some browsers
+    ];
+    if (file.type && !allowedMimeTypes.includes(file.type)) {
+      return new Response(
+        JSON.stringify({ error: "Unsupported file type." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Validate file size (10MB max)
     const MAX_FILE_SIZE = 10 * 1024 * 1024;
     const arrayBuffer = await file.arrayBuffer();
@@ -78,8 +92,10 @@ serve(async (req) => {
 
     // Limits for safe processing
     const MAX_MATCHES = 5000;
-    const MAX_EXTRACTED_LENGTH = 200_000; // Stop extraction early if text is huge
+    const MAX_EXTRACTED_LENGTH = 200_000;
     const MAX_STREAM_COUNT = 500;
+    const PROCESSING_TIMEOUT_MS = 15_000; // 15s timeout for document parsing
+    const processingStart = Date.now();
 
     if (fileName.endsWith(".pdf")) {
       // Validate PDF magic bytes: %PDF-
@@ -103,12 +119,16 @@ serve(async (req) => {
           .join(" ");
       }
 
-      // Extract from streams with count limit
+      // Extract from streams with count limit and timeout
       const streamMatches = rawText.match(/stream\r?\n([\s\S]*?)\r?\nendstream/g);
       if (streamMatches) {
         const limitedStreams = streamMatches.slice(0, MAX_STREAM_COUNT);
         for (const stream of limitedStreams) {
           if (extractedText.length >= MAX_EXTRACTED_LENGTH) break;
+          if (Date.now() - processingStart > PROCESSING_TIMEOUT_MS) {
+            console.warn("Document processing timeout reached during PDF stream extraction");
+            break;
+          }
           const readable = stream.replace(/stream\r?\n/, "").replace(/\r?\nendstream/, "");
           // Skip very large streams (likely binary/image data)
           if (readable.length > 100_000) continue;
