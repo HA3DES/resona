@@ -63,34 +63,58 @@ serve(async (req) => {
       );
     }
 
-    // Read file content as text - for PDFs we extract what we can
+    // Validate file size (10MB max)
+    const MAX_FILE_SIZE = 10 * 1024 * 1024;
     const arrayBuffer = await file.arrayBuffer();
+    if (arrayBuffer.byteLength > MAX_FILE_SIZE) {
+      return new Response(JSON.stringify({ error: "File too large. Maximum size is 10MB." }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const bytes = new Uint8Array(arrayBuffer);
-    
     let extractedText = "";
 
+    // Limits for safe processing
+    const MAX_MATCHES = 5000;
+    const MAX_EXTRACTED_LENGTH = 200_000; // Stop extraction early if text is huge
+    const MAX_STREAM_COUNT = 500;
+
     if (fileName.endsWith(".pdf")) {
-      // Basic PDF text extraction - look for text streams
+      // Validate PDF magic bytes: %PDF-
+      if (bytes.length < 5 || bytes[0] !== 0x25 || bytes[1] !== 0x50 || bytes[2] !== 0x44 || bytes[3] !== 0x46 || bytes[4] !== 0x2D) {
+        return new Response(JSON.stringify({ error: "Invalid PDF file." }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       const decoder = new TextDecoder("latin1");
       const rawText = decoder.decode(bytes);
-      
-      // Extract text between BT and ET operators (basic PDF text extraction)
+
+      // Extract text between parentheses with iteration limit
       const textMatches = rawText.match(/\(([^)]+)\)/g);
       if (textMatches) {
-        extractedText = textMatches
+        const limited = textMatches.slice(0, MAX_MATCHES);
+        extractedText = limited
           .map((m) => m.slice(1, -1))
           .filter((t) => t.length > 2 && /[a-zA-Z]/.test(t))
           .join(" ");
       }
 
-      // Also try to get text from streams
+      // Extract from streams with count limit
       const streamMatches = rawText.match(/stream\r?\n([\s\S]*?)\r?\nendstream/g);
       if (streamMatches) {
-        for (const stream of streamMatches) {
+        const limitedStreams = streamMatches.slice(0, MAX_STREAM_COUNT);
+        for (const stream of limitedStreams) {
+          if (extractedText.length >= MAX_EXTRACTED_LENGTH) break;
           const readable = stream.replace(/stream\r?\n/, "").replace(/\r?\nendstream/, "");
+          // Skip very large streams (likely binary/image data)
+          if (readable.length > 100_000) continue;
           const textParts = readable.match(/\(([^)]+)\)/g);
           if (textParts) {
-            const streamText = textParts
+            const streamText = textParts.slice(0, MAX_MATCHES)
               .map((m) => m.slice(1, -1))
               .filter((t) => t.length > 2 && /[a-zA-Z]/.test(t))
               .join(" ");
@@ -105,19 +129,27 @@ serve(async (req) => {
         extractedText = "[PDF content could not be fully extracted. The AI will analyze based on the filename and any available metadata.]";
       }
     } else {
-      // For DOCX files, extract XML content
-      // DOCX is a ZIP file containing XML
+      // DOCX validation: must start with ZIP magic bytes (PK\x03\x04)
+      if (bytes.length < 4 || bytes[0] !== 0x50 || bytes[1] !== 0x4B || bytes[2] !== 0x03 || bytes[3] !== 0x04) {
+        return new Response(JSON.stringify({ error: "Invalid DOCX file." }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
       try {
-        // Try to find document.xml content in the DOCX zip
         const decoder = new TextDecoder("utf-8", { fatal: false });
         const rawContent = decoder.decode(bytes);
-        
-        // Extract text from XML tags
-        const textContent = rawContent.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-        
-        // Filter to readable portions
+
+        // Limit decoded content to prevent memory issues
+        const safeContent = rawContent.length > MAX_EXTRACTED_LENGTH
+          ? rawContent.substring(0, MAX_EXTRACTED_LENGTH)
+          : rawContent;
+
+        const textContent = safeContent.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+
         const words = textContent.split(" ").filter((w) => /^[a-zA-Z0-9.,!?;:'"()-]+$/.test(w));
-        extractedText = words.join(" ");
+        extractedText = words.slice(0, 50_000).join(" ");
 
         if (extractedText.length < 50) {
           extractedText = `[Document: ${file.name}. Content extraction was limited. The AI will infer structure from available text.]`;
