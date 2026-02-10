@@ -153,6 +153,7 @@ export default function DocumentView() {
   const [newSectionName, setNewSectionName] = useState('');
   const [deleteSection, setDeleteSection] = useState<Section | null>(null);
   const [askAIOpen, setAskAIOpen] = useState(false);
+  const [askAISectionId, setAskAISectionId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -352,9 +353,26 @@ export default function DocumentView() {
   };
 
   const handleInsertAIContent = (content: string) => {
-    if (!activeSection) return;
-    const newContent = activeSection.content + '\n\n' + content;
-    handleContentChange(newContent);
+    // Insert into the section that was active when Ask AI was opened
+    const targetId = askAISectionId;
+    if (!targetId) return;
+    
+    const targetSection = sections.find(s => s.id === targetId);
+    if (!targetSection) return;
+
+    const newContent = targetSection.content + '\n\n' + content;
+    
+    // Update sections array
+    setSections(prev => prev.map(s => s.id === targetId ? { ...s, content: newContent } : s));
+    
+    // If the target section is currently active, update activeSection too
+    if (activeSection?.id === targetId) {
+      setActiveSection(prev => prev ? { ...prev, content: newContent } : null);
+    }
+    
+    // Save to database
+    debouncedSave(targetId, newContent);
+    
     setAskAIOpen(false);
     toast.success('AI content inserted');
   };
@@ -661,7 +679,7 @@ export default function DocumentView() {
                 />
               </div>
               <div className="border-t p-4">
-                <Button onClick={() => setAskAIOpen(true)}>
+                <Button onClick={() => { setAskAISectionId(activeSection?.id || null); setAskAIOpen(true); }}>
                   <Sparkles className="mr-2 h-4 w-4" />
                   Ask AI
                 </Button>
@@ -718,16 +736,20 @@ export default function DocumentView() {
       </AlertDialog>
 
       {/* Ask AI Modal */}
-      {activeSection && (
-        <AskAIModal
-          open={askAIOpen}
-          onOpenChange={setAskAIOpen}
-          documentContext={documentContext}
-          currentSection={activeSection.title}
-          currentContent={activeSection.content}
-          onInsert={handleInsertAIContent}
-        />
-      )}
+      {askAISectionId && (() => {
+        const askAISection = sections.find(s => s.id === askAISectionId);
+        if (!askAISection) return null;
+        return (
+          <AskAIModal
+            open={askAIOpen}
+            onOpenChange={setAskAIOpen}
+            documentContext={documentContext}
+            currentSection={askAISection.title}
+            currentContent={askAISection.content}
+            onInsert={handleInsertAIContent}
+          />
+        );
+      })()}
     </div>
   );
 }
