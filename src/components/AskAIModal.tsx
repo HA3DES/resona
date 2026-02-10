@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import {
   Dialog,
   DialogContent,
@@ -40,13 +41,19 @@ export default function AskAIModal({
     setResponse('');
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        toast.error('Please log in to use Ask AI');
+        return;
+      }
+
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ask-ai`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+            Authorization: `Bearer ${session.access_token}`,
           },
           body: JSON.stringify({
             documentContext,
